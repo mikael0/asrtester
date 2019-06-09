@@ -9,6 +9,7 @@ import kotlinx.coroutines.*
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
+import kotlin.streams.toList
 
 //TODO: configure
 private const val HOST = "localhost:9000"
@@ -17,15 +18,17 @@ private const val SAMPLES_DIR = "/home/mikael0/ASRs/ASRTestingFramework/asr_audi
 private const val testLowerFactor = 0.1
 private const val testUpperFactor = 10
 private const val testRangeFactor = testUpperFactor - testLowerFactor
+private const val retryTimeoutMs = 15000L
 
 /**
  * Usage
  * argv[1] - name of tested asrs
  * argv[2] - number of test steps - 1
  * argv[3] - dataset key
- * argv[4] - dir for results (optional)
- * argv[5] - dir with samples (optional)
- * argv[6] - host with system (optional)
+ * argv[4] - maximum timeout in seconds
+ * argv[5] - dir for results (optional)
+ * argv[6] - dir with samples (optional)
+ * argv[7] - host with system (optional)
  */
 
 //create job
@@ -50,17 +53,52 @@ data class ASRTestParams(val test: Array<ASRParam>)
 private val gson = GsonBuilder().setPrettyPrinting().serializeNulls().create()
 
 fun main(args: Array<String>) = runBlocking {
+    if (args.size == 0) {
+        print("""
+            Usage
+            argv[1] - name of tested asrs
+            argv[2] - number of test steps - 1
+            argv[3] - dataset key
+            argv[4] - maximum timeout in seconds
+            argv[5] - dir for results (optional)
+            argv[6] - dir with samples (optional)
+            argv[7] - host with system (optional)
+        """.trimIndent())
+    }
     val asrName = args[0]
     val experimentCount = args[1].toInt()
     val datasetKey = args[2]
-    val resultsDir = if (args.size >= 4) args[3] else RESULTS_DIR
-    val samplesDir = if (args.size >= 5) args[4] else SAMPLES_DIR
-    val host = if (args.size >= 6) args[5] else HOST
+    val timeout = args[3].toInt() * 1000
+    val resultsDir = if (args.size >= 5) args[4] else RESULTS_DIR
+    val samplesDir = if (args.size >= 6) args[5] else SAMPLES_DIR
+    val host = if (args.size >= 7) args[6] else HOST
 
     File(resultsDir).mkdirs()
-    val dataset = Files.list(Paths.get(samplesDir, datasetKey))
-            .map { it.toString().replace(samplesDir + "/", "") }
-            .toArray{ size -> Array(size, { "" }) }
+    val datasetType = File(Paths.get(samplesDir, datasetKey, "info.meta")
+            .toUri())
+            .readLines()
+            .filter {it.contains("datasetType")}
+            .map { it.replace("datasetType=", "") }
+            .get(0)
+    val dataset = if (datasetType == "voxforge") {
+                     Files.list(Paths.get(samplesDir, datasetKey))
+                        .filter { !it.toString().contains(".meta") }
+                        .map { Files.list(Paths.get(it.toString(), "wav")).toList() }
+                        .toList()
+                        .flatten()
+                        .map {
+                            it.toString()
+                                    .replace(samplesDir + "/", "")
+                                    .replace("wav", "")
+                                    .replace("//", "-")
+                                    .replace(".", "")
+                        }
+                        .toArray { size -> Array(size, { "" }) }
+                } else {
+                     Files.list(Paths.get(samplesDir, datasetKey))
+                             .map {  it.toString().replace(samplesDir + "/", "") }
+                             .toArray { size -> Array(size, { "" }) }
+                }
 
     val client = HttpClient(Apache) {
         install(JsonFeature) {
@@ -70,6 +108,7 @@ fun main(args: Array<String>) = runBlocking {
             }
         }
     }
+
     try {
         val asrParams = client.get<ASRTestParams> {
             url("http://$host/api/asr/executors/$asrName/params/")
@@ -113,7 +152,7 @@ fun main(args: Array<String>) = runBlocking {
                     do {
                         var retries = 0
                         var completed = false
-                        delay(15000)
+                        delay(retryTimeoutMs)
                         try {
                             val resStatus = client.get<ASRJobResult> {
                                 url("http://$host/api/asr/jobs/result/$id/")
@@ -129,7 +168,7 @@ fun main(args: Array<String>) = runBlocking {
                             println("Error $e")
                             retries++
                         }
-                    } while (!(completed || retries > 6))
+                    } while (!(completed || retries > timeout / retryTimeoutMs))
                 } catch(e: ClientRequestException) {
                     println("Error $e")
                 }
