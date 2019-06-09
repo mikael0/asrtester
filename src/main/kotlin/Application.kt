@@ -1,4 +1,5 @@
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonArray
 import io.ktor.client.*
 import io.ktor.client.engine.apache.*
 import io.ktor.client.features.ClientRequestException
@@ -121,6 +122,8 @@ fun main(args: Array<String>) = runBlocking {
                 continue
             }
 
+            val writer = Files.newBufferedWriter(Paths.get("$resultsDir/${asrName}_${param.key}.json"))
+            val reportJson = JsonArray()
             for (testedValue in when(param.paramType) {
                 "int" -> param.defaultValue.toInt().let {
                     (it * testLowerFactor).toInt() .. (it * testUpperFactor).toInt() step (it * testRangeFactor).toInt() / experimentCount
@@ -160,10 +163,7 @@ fun main(args: Array<String>) = runBlocking {
                             }
                             println("Job results $resStatus")
                             completed = true
-                            val writer = Files.newBufferedWriter(Paths.get("$resultsDir/${asrName}_${param.key}_${testedValue}.json"))
-                            writer.write(gson.toJson(resStatus.result))
-                            writer.flush()
-                            writer.close()
+                            reportJson.add(gson.toJson(mapOf(testedValue to resStatus.result)))
                         } catch (e: ClientRequestException) {
                             println("Error $e")
                             retries++
@@ -173,6 +173,9 @@ fun main(args: Array<String>) = runBlocking {
                     println("Error $e")
                 }
             }
+            writer.write(reportJson.toString())
+            writer.flush()
+            writer.close()
         }
     } catch (e: Exception) {
         println("Error $e")
