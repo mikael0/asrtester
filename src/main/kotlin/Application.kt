@@ -1,5 +1,6 @@
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import io.ktor.client.*
 import io.ktor.client.engine.apache.*
 import io.ktor.client.features.ClientRequestException
@@ -93,8 +94,7 @@ fun main(args: Array<String>) = runBlocking {
                                     .replace("wav", "")
                                     .replace("//", "-")
                                     .replace(".", "")
-                        }
-                        .toArray { size -> Array(size, { "" }) }
+                        }.toTypedArray()
                 } else {
                      Files.list(Paths.get(samplesDir, datasetKey))
                              .map {  it.toString().replace(samplesDir + "/", "") }
@@ -132,9 +132,11 @@ fun main(args: Array<String>) = runBlocking {
                     (it * testLowerFactor) .. (it * testUpperFactor) step it * testRangeFactor / experimentCount
                 }
                 "select" -> param.options?.map { it.title } ?: IntRange.EMPTY
+                "Boolean", "boolean", "bool" -> listOf(true, false)
                 else -> IntRange.EMPTY
             }) {
                 try {
+                    println("Testing ${param.key} : $testedValue")
                     val config = asrParams.test.map {
                         if (param.key != it.key)
                             it.key to it.defaultValue
@@ -152,9 +154,9 @@ fun main(args: Array<String>) = runBlocking {
                     println("Created job $response")
                     val id = response.steps[0].id
 
+                    var retries = 0
+                    var completed = false
                     do {
-                        var retries = 0
-                        var completed = false
                         delay(retryTimeoutMs)
                         try {
                             val resStatus = client.get<ASRJobResult> {
@@ -163,7 +165,12 @@ fun main(args: Array<String>) = runBlocking {
                             }
                             println("Job results $resStatus")
                             completed = true
-                            reportJson.add(gson.toJson(mapOf(testedValue to resStatus.result)))
+                            val reportItem = JsonObject()
+                            reportItem.addProperty("testedValue", testedValue.toString())
+                            for (item in resStatus.result) {
+                                reportItem.addProperty(item.key, item.value)
+                            }
+                            reportJson.add(reportItem)
                         } catch (e: ClientRequestException) {
                             println("Error $e")
                             retries++
