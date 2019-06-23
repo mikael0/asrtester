@@ -12,6 +12,9 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.streams.toList
+import io.ktor.client.features.cookies.AcceptAllCookiesStorage
+import io.ktor.client.features.cookies.HttpCookies
+
 
 //TODO: configure
 private const val HOST = "localhost:9000"
@@ -51,6 +54,9 @@ data class ASRJobResult(val result: Map<String, String>)
 data class ASRParamOption(val title: String)
 data class ASRParam(val key: String, val paramType: String, val defaultValue: String, val options: Array<ASRParamOption>?)
 data class ASRTestParams(val test: Array<ASRParam>)
+
+//auth
+data class Credentials(val username: String, val password: String)
 
 private val gson = GsonBuilder().setPrettyPrinting().serializeNulls().create()
 
@@ -108,9 +114,22 @@ fun main(args: Array<String>) = runBlocking {
                 disableHtmlEscaping()
             }
         }
+        install(HttpCookies) {
+            storage = AcceptAllCookiesStorage()
+        }
     }
 
     try {
+        try {
+            client.post<String> {
+                url("http://$host/api/login/")
+                contentType(ContentType.Application.Json)
+                body = Credentials("root", "4dE^-c=LxTKW=zDQ")
+            }
+        } catch (e: Exception) {
+            println("Failed to login $e")
+        }
+
         val asrParams = client.get<ASRTestParams> {
             url("http://$host/api/asr/executors/$asrName/params/")
             contentType(ContentType.Application.Json)
