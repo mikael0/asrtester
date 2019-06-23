@@ -141,11 +141,16 @@ fun main(args: Array<String>) = runBlocking {
                 continue
             }
 
+            println("Testing ${param.key}")
             val writer = Files.newBufferedWriter(Paths.get("$resultsDir/${asrName}_${param.key}.json"))
             val reportJson = JsonArray()
             for (testedValue in when(param.paramType) {
                 "int" -> param.defaultValue.toInt().let {
-                    (it * testLowerFactor).toInt() .. (it * testUpperFactor).toInt() step (it * testRangeFactor).toInt() / experimentCount
+                    var stp = (it * testRangeFactor).toInt() / experimentCount
+                    if (stp == 0) {
+                        stp = 1
+                    }
+                    (it * testLowerFactor).toInt() .. (it * testUpperFactor).toInt() step stp
                 }
                 "double", "float" -> param.defaultValue.toDouble().let {
                     (it * testLowerFactor) .. (it * testUpperFactor) step it * testRangeFactor / experimentCount
@@ -159,6 +164,11 @@ fun main(args: Array<String>) = runBlocking {
                 if (param.key == "decoderType" && asrName == "kaldi" && testedValue != "mts-ivector-decode") {
                     continue
                 }
+                //don't test this stuff
+                if (param.key == "exp-config-njobs" && asrName == "kaldi") {
+                    continue
+                }
+
 
                 try {
                     println("Testing ${param.key} : $testedValue")
