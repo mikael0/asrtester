@@ -31,9 +31,10 @@ private const val retryTimeoutMs = 15000L
  * argv[2] - number of test steps - 1
  * argv[3] - dataset key
  * argv[4] - maximum timeout in seconds
- * argv[5] - dir for results (optional)
- * argv[6] - dir with samples (optional)
- * argv[7] - host with system (optional)
+ * argv[5] - dir for results
+ * argv[6] - dir with samples
+ * argv[7] - host with system
+ * argv[8] - path to file with excluded parameters (one by line)
  */
 
 //create job
@@ -68,9 +69,10 @@ fun main(args: Array<String>) = runBlocking {
             argv[2] - number of test steps - 1
             argv[3] - dataset key
             argv[4] - maximum timeout in seconds
-            argv[5] - dir for results (optional)
-            argv[6] - dir with samples (optional)
-            argv[7] - host with system (optional)
+            argv[5] - dir for results
+            argv[6] - dir with samples
+            argv[7] - host with system
+            argv[8] - path to file with excluded parameters (one by line)
         """.trimIndent())
     }
     val asrName = args[0]
@@ -80,6 +82,7 @@ fun main(args: Array<String>) = runBlocking {
     val resultsDir = if (args.size >= 5) args[4] else RESULTS_DIR
     val samplesDir = if (args.size >= 6) args[5] else SAMPLES_DIR
     val host = if (args.size >= 7) args[6] else HOST
+    val excludedPath = if (args.size >= 8) args[7] else ""
 
     File(resultsDir).mkdirs()
     val datasetType = File(Paths.get(samplesDir, datasetKey, "info.meta")
@@ -136,12 +139,18 @@ fun main(args: Array<String>) = runBlocking {
         }
 
         println("Got params for ASR $asrName\n$asrParams")
+        val excludedParams = File(excludedPath).readLines()
         for (param in asrParams.test) {
             if (param.paramType == "string" || param.key == "modelName") {
                 continue
             }
 
             println("Testing ${param.key}")
+            //set up only for ivector
+            if (param.key in excludedParams) {
+                println("${param.key} is excluded")
+                continue
+            }
             val writer = Files.newBufferedWriter(Paths.get("$resultsDir/${asrName}_${param.key}.json"))
             val reportJson = JsonArray()
             for (testedValue in when(param.paramType) {
@@ -159,16 +168,6 @@ fun main(args: Array<String>) = runBlocking {
                 "Boolean", "boolean", "bool" -> listOf(true, false)
                 else -> IntRange.EMPTY
             }) {
-
-                //set up only for ivector
-                if (param.key == "decoderType" && asrName == "kaldi" && testedValue != "mts-ivector-decode") {
-                    continue
-                }
-                //don't test this stuff
-                if (param.key == "exp-config-njobs" && asrName == "kaldi") {
-                    continue
-                }
-
 
                 try {
                     println("Testing ${param.key} : $testedValue")
