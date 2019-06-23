@@ -51,7 +51,7 @@ data class ASRJobResp(val id: String, val steps: Array<ASRJobStepResp>)
 data class ASRJobResult(val result: Map<String, String>)
 
 //get asr params
-data class ASRParamOption(val title: String)
+data class ASRParamOption(val title: String, val key: String)
 data class ASRParam(val key: String, val paramType: String, val defaultValue: String, val options: Array<ASRParamOption>?)
 data class ASRTestParams(val test: Array<ASRParam>)
 
@@ -88,7 +88,7 @@ fun main(args: Array<String>) = runBlocking {
             .filter {it.contains("datasetType")}
             .map { it.replace("datasetType=", "") }
             .get(0)
-    val dataset = if (datasetType == "voxforge") {
+    val dataset = if (datasetType.contains("voxforge")) {
                      Files.list(Paths.get(samplesDir, datasetKey))
                         .filter { !it.toString().contains(".meta") }
                         .map { Files.list(Paths.get(it.toString(), "wav")).toList() }
@@ -150,10 +150,16 @@ fun main(args: Array<String>) = runBlocking {
                 "double", "float" -> param.defaultValue.toDouble().let {
                     (it * testLowerFactor) .. (it * testUpperFactor) step it * testRangeFactor / experimentCount
                 }
-                "select" -> param.options?.map { it.title } ?: IntRange.EMPTY
+                "select" -> param.options?.map { it.key } ?: IntRange.EMPTY
                 "Boolean", "boolean", "bool" -> listOf(true, false)
                 else -> IntRange.EMPTY
             }) {
+
+                //set up only for ivector
+                if (param.key == "decoderType" && asrName == "kaldi" && testedValue != "mts-ivector-decode") {
+                    continue
+                }
+
                 try {
                     println("Testing ${param.key} : $testedValue")
                     val config = asrParams.test.map {
