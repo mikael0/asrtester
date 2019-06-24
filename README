@@ -1,0 +1,8 @@
+Launch by this command 
+
+java -cp build/libs/asrtester-1.0-SNAPSHOT-all.jar ApplicationKt kaldi 20 5dic8khz 3600 ~/results /asr-core/asr_audio_samples 127.0.0.1:9000 kaldiExclusion kaldiPredefined 10 > ~/git/asrtester/log 2>&1 &
+
+Parameters are described in the source code Aplication.kt
+
+Output is saved to ~/result dir, separate file for each parameter
+
