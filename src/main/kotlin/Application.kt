@@ -35,6 +35,8 @@ private const val retryTimeoutMs = 15000L
  * argv[6] - dir with samples
  * argv[7] - host with system
  * argv[8] - path to file with excluded parameters (one by line)
+ * argv[9] - path to file with predefined parameters (key:value by line)
+ * argv[10] - one experiment repeat count
  */
 
 //create job
@@ -73,6 +75,8 @@ fun main(args: Array<String>) = runBlocking {
             argv[6] - dir with samples
             argv[7] - host with system
             argv[8] - path to file with excluded parameters (one by line)
+            argv[9] - path to file with predefined parameters (key:value by line)
+            argv[10] - one experiment repeat count
         """.trimIndent())
     }
     val asrName = args[0]
@@ -83,6 +87,8 @@ fun main(args: Array<String>) = runBlocking {
     val samplesDir = if (args.size >= 6) args[5] else SAMPLES_DIR
     val host = if (args.size >= 7) args[6] else HOST
     val excludedPath = if (args.size >= 8) args[7] else ""
+    val predefinedPath = if (args.size >= 9) args[8] else ""
+    val repeatCount = if (args.size >= 10) args[9].toInt() else 1
 
     File(resultsDir).mkdirs()
     val datasetType = File(Paths.get(samplesDir, datasetKey, "info.meta")
@@ -140,13 +146,14 @@ fun main(args: Array<String>) = runBlocking {
 
         println("Got params for ASR $asrName\n$asrParams")
         val excludedParams = File(excludedPath).readLines()
+        val predefinedRaw = File(predefinedPath).readLines()
+        val predefinedParams = predefinedRaw.map { it.substringBefore(':') to it.substringAfter(':')}.toMap()
         for (param in asrParams.test) {
             if (param.paramType == "string" || param.key == "modelName") {
                 continue
             }
 
             println("Testing ${param.key}")
-            //set up only for ivector
             if (param.key in excludedParams) {
                 println("${param.key} is excluded")
                 continue
@@ -171,45 +178,48 @@ fun main(args: Array<String>) = runBlocking {
 
                 try {
                     println("Testing ${param.key} : $testedValue")
-                    val config = asrParams.test.map {
-                        if (param.key != it.key)
-                            it.key to it.defaultValue
-                        else
-                            it.key to testedValue.toString()
-                    }.toMap()
-
-                    val response = client.post<ASRJobResp> {
-                        url("http://$host/api/asr/jobs/")
-                        contentType(ContentType.Application.Json)
-                        body = ASRJob(asrName, Array(1) {
-                            ASRJobStep(it, config = config, samples = dataset)
-                        })
-                    }
-                    println("Created job $response")
-                    val id = response.steps[0].id
-
-                    var retries = 0
-                    var completed = false
-                    do {
-                        delay(retryTimeoutMs)
-                        try {
-                            val resStatus = client.get<ASRJobResult> {
-                                url("http://$host/api/asr/jobs/result/$id/")
-                                contentType(ContentType.Application.Json)
+                    for (i in 0..repeatCount) {
+                        val config = asrParams.test.map {
+                            if (param.key != it.key) {
+                                it.key to (predefinedParams.get(it.key) ?: it.defaultValue)
+                            } else {
+                                it.key to testedValue.toString()
                             }
-                            println("Job results $resStatus")
-                            completed = true
-                            val reportItem = JsonObject()
-                            reportItem.addProperty("testedValue", testedValue.toString())
-                            for (item in resStatus.result) {
-                                reportItem.addProperty(item.key, item.value)
-                            }
-                            reportJson.add(reportItem)
-                        } catch (e: ClientRequestException) {
-                            println("Error $e")
-                            retries++
+                        }.toMap()
+
+                        val response = client.post<ASRJobResp> {
+                            url("http://$host/api/asr/jobs/")
+                            contentType(ContentType.Application.Json)
+                            body = ASRJob(asrName, Array(1) {
+                                ASRJobStep(it, config = config, samples = dataset)
+                            })
                         }
-                    } while (!(completed || retries > timeout / retryTimeoutMs))
+                        println("Created job $response")
+                        val id = response.steps[0].id
+
+                        var retries = 0
+                        var completed = false
+                        do {
+                            delay(retryTimeoutMs)
+                            try {
+                                val resStatus = client.get<ASRJobResult> {
+                                    url("http://$host/api/asr/jobs/result/$id/")
+                                    contentType(ContentType.Application.Json)
+                                }
+                                println("Job results $resStatus")
+                                completed = true
+                                val reportItem = JsonObject()
+                                reportItem.addProperty("testedValue", testedValue.toString())
+                                for (item in resStatus.result) {
+                                    reportItem.addProperty(item.key, item.value)
+                                }
+                                reportJson.add(reportItem)
+                            } catch (e: ClientRequestException) {
+                                println("Error $e")
+                                retries++
+                            }
+                        } while (!(completed || retries > timeout / retryTimeoutMs))
+                    }
                 } catch(e: ClientRequestException) {
                     println("Error $e")
                 }
