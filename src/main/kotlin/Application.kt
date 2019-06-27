@@ -222,11 +222,11 @@ fun main(args: Array<String>) = runBlocking {
                                 retries++
                             }
                         } while (!(completed || retries > timeout / retryTimeoutMs))
-                        val reportItem = JsonObject()
-                        reportItem.addProperty("testedValue", testedValue.toString())
-                        aveValues.forEach { reportItem.addProperty(it.key, it.value.average()) }
-                        reportJson.add(reportItem)
                     }
+                    val reportItem = JsonObject()
+                    reportItem.addProperty("testedValue", testedValue.toString())
+                    aveValues.forEach { reportItem.addProperty(it.key, it.value.average()) }
+                    reportJson.add(reportItem)
                 } catch (e: ClientRequestException) {
                     println("Error $e")
                 }
