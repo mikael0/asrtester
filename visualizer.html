@@ -1,0 +1,49 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<meta charset="UTF-8">
+	<head>
+		<script type="text/javascript" src="https://canvasjs.com/assets/script/canvasjs.min.js"> </script>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+		<script type="text/javascript">
+			$(document).ready(function(){
+				var jsonObj = [
+					{"testedValue":"true","IWER":"-","OER":"-","MER":"-","DEL":"0.453","SUB":"0.484","SMER":"-","INS":"0.0","MSTAT":"-","IWERS":"-","SF":"0.055","WER":"0.062"},{"testedValue":"false","IWER":"-","OER":"-","MER":"-","DEL":"0.453","SUB":"0.484","SMER":"-","INS":"0.0","MSTAT":"-","IWERS":"-","SF":"0.051","WER":"0.062"}
+				]
+				var parameter = "exp-config-extract_lattice_score"
+				var metric = "SF"
+
+				// formatting the json data as required by CanvasJS
+				var dataPoints = [];
+				var maxValue = 0
+
+				for (var i = 0; i < jsonObj.length; i++) {
+					maxValue = Math.max(maxValue, parseFloat(jsonObj[i][metric]))
+					dataPoints.push({ label: jsonObj[i].testedValue, y: parseFloat(jsonObj[i][metric])});
+				}
+				console.log(dataPoints)
+
+				var chart = new CanvasJS.Chart("chartContainer",
+					{
+						subtitles: [{
+							text: parameter,
+							fontSize: 16
+						}],
+						data: [
+							{
+								type: "column",
+								dataPoints: dataPoints
+							}
+						],
+						axisY: {
+							title: metric,
+							maximum: maxValue * 1.3
+						}
+					});
+
+				chart.render();
+			});
+		</script>	
+	</head>
+	<body>
+		<div id="chartContainer" style="height: 360px; width: 100%;"></div>
+	</body>	
+</html>

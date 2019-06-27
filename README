@@ -1,8 +1,49 @@
-Launch by this command 
+Сборка:
 
-java -cp build/libs/asrtester-1.0-SNAPSHOT-all.jar ApplicationKt kaldi 20 5dic8khz 3600 ~/results /asr-core/asr_audio_samples 127.0.0.1:9000 kaldiExclusion kaldiPredefined 10 > ~/git/asrtester/log 2>&1 &
+Проект собирается гредлом из корня
+./gradlew :assemble
 
-Parameters are described in the source code Aplication.kt
+Для получения jar
+./gradlew :shadowJar
 
-Output is saved to ~/result dir, separate file for each parameter
+Полученный jar находится в build/libs/asrtester-1.0-SNAPSHOT-all.jar
 
+
+Тестирование:
+Запускать тетсер следующей командой
+java -cp build/libs/asrtester-1.0-SNAPSHOT-all.jar ApplicationKt kaldi 20 5dic8khz 3600 ~/results /asr-core/asr_audio_samples \
+127.0.0.1:9000 kaldiExclusion kaldiPredefined 10 > ~/git/asrtester/log 2>&1 &
+
+Параметры:
+ * argv[1] - имя аср для тестирования
+ * argv[2] - количество значений для эксперимента - 1 в диапазоне 0.1*defaultValue .. 10*defaultValue
+ * argv[3] - имя датасета
+ * argv[4] - таймаут для одного прогона аср в секундах
+ * argv[5] - директория для результатов
+ * argv[6] - директория с датасетом
+ * argv[7] - адрес системы с портом
+ * argv[8] - путь к файлу с параметрами которые выключаются из тестирования (по одному на строчку)
+ * argv[9] - путь к файлу с параметрами которые пердопределены (ключ:значение)
+ * argv[10] - количество повторений одного эксперимента
+
+Эта команда запустит тестирование аср на системе.
+Процесс логируется в stdout, также можно посмотреть логи выполнения системы в докере.
+
+
+Визуализация:
+
+Автоматически:
+Запускать тетсер следующей командой
+java -cp build/libs/asrtester-1.0-SNAPSHOT-all.jar VisializerKt inPath outPath
+
+Параметры:
+ * argv[1] - директория с результатами работы тестера
+ * argv[2] - выходная директория с диаграммами
+
+Вручную:
+В visualizer.html надо поменять
+var jsonObj = [ ] //json из отчета тестера
+var parameter = "exp-config-extract_lattice_score" // имя тестируемого параметра
+var metric = "SF" // имя метрики, по которой надо построить диаграмму
+
+Затем открыть visualizer.html в браузере.

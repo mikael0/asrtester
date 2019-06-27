@@ -14,6 +14,7 @@ import java.nio.file.Paths
 import kotlin.streams.toList
 import io.ktor.client.features.cookies.AcceptAllCookiesStorage
 import io.ktor.client.features.cookies.HttpCookies
+import java.lang.NumberFormatException
 
 
 //TODO: configure
@@ -178,6 +179,7 @@ fun main(args: Array<String>) = runBlocking {
 
                 try {
                     println("Testing ${param.key} : $testedValue")
+                    val aveValues = mutableMapOf<String, MutableList<Float>>()
                     for (i in 0..repeatCount) {
                         val config = asrParams.test.map {
                             if (param.key != it.key) {
@@ -208,19 +210,24 @@ fun main(args: Array<String>) = runBlocking {
                                 }
                                 println("Job results $resStatus")
                                 completed = true
-                                val reportItem = JsonObject()
-                                reportItem.addProperty("testedValue", testedValue.toString())
                                 for (item in resStatus.result) {
-                                    reportItem.addProperty(item.key, item.value)
+                                    try {
+                                        aveValues.get(item.key)?.apply {
+                                            add(item.value.toFloat())
+                                        } ?: aveValues.put(item.key, mutableListOf(item.value.toFloat()))
+                                    } catch (ignored: NumberFormatException) { }
                                 }
-                                reportJson.add(reportItem)
                             } catch (e: ClientRequestException) {
                                 println("Error $e")
                                 retries++
                             }
                         } while (!(completed || retries > timeout / retryTimeoutMs))
+                        val reportItem = JsonObject()
+                        reportItem.addProperty("testedValue", testedValue.toString())
+                        aveValues.forEach { reportItem.addProperty(it.key, it.value.average()) }
+                        reportJson.add(reportItem)
                     }
-                } catch(e: ClientRequestException) {
+                } catch (e: ClientRequestException) {
                     println("Error $e")
                 }
             }
