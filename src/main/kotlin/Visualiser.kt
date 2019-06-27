@@ -34,8 +34,16 @@ fun main(args: Array<String>) {
                                         // formatting the json data as required by CanvasJS
                                         var dataPoints = [];
                                         var maxValue = 0
+                                        var labels = [];
 
                                         for (var i = 0; i < jsonObj.length; i++) {
+                                            if (isNaN(parseFloat(jsonObj[i][metric]))) {
+                                                continue
+                                            }
+                                            if (labels.includes(jsonObj[i].testedValue)) {
+                                                continue
+                                            }
+                                            labels.push(jsonObj[i].testedValue)
                                             maxValue = Math.max(maxValue, parseFloat(jsonObj[i][metric]))
                                             dataPoints.push({ label: jsonObj[i].testedValue, y: parseFloat(jsonObj[i][metric])});
                                         }
