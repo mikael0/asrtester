@@ -15,6 +15,7 @@ import kotlin.streams.toList
 import io.ktor.client.features.cookies.AcceptAllCookiesStorage
 import io.ktor.client.features.cookies.HttpCookies
 import java.lang.NumberFormatException
+import java.util.*
 
 
 //TODO: configure
@@ -41,18 +42,29 @@ private const val retryTimeoutMs = 15000L
  */
 
 //create job
-data class ASRJobStep(val index: Int,
+open class ASRJobStep
+data class TagGroup(val metrics: Array<String>, val tags: Array<String>)
+data class MetricsStepConfig(val metrics: Array<String>, val tagGroups: Array<TagGroup> = emptyArray())
+data class ASRJobTestStep(val index: Int,
                       val stepType: String = "test",
                       val config: Map<String, String> = emptyMap(),
-                      val modelType: String = "default",
-                      val jobForModel: String? = null,
-                      val samples: Array<String>)
+                      val inputType: String = "default",
+                      val inputJob: String? = null,
+                      val samples: Array<String>) : ASRJobStep()
+data class ASRJobMeasureStep(val index: Int,
+                      val stepType: String = "measure",
+                      val config: MetricsStepConfig,
+                      val samples: Array<String>,
+                      val inputJob: String? = null,
+                      val inputType: String = "current") : ASRJobStep()
 data class ASRJob(val asrKey: String, val steps: Array<ASRJobStep> )
 data class ASRJobStepResp(val id: String)
 data class ASRJobResp(val id: String, val steps: Array<ASRJobStepResp>)
 
 //get job result
-data class ASRJobResult(val result: Map<String, String>)
+data class ASRJobResult(val result: ASRJobResultInner)
+data class ASRJobResultInner(val overall: Array<OverallMetrics>)
+data class OverallMetrics(val result: Map<String, String>)
 
 //get asr params
 data class ASRParamOption(val title: String, val key: String)
@@ -61,6 +73,9 @@ data class ASRTestParams(val test: Array<ASRParam>)
 
 //auth
 data class Credentials(val username: String, val password: String)
+
+//metrics
+data class Metric(val key: String, val title: String)
 
 private val gson = GsonBuilder().setPrettyPrinting().serializeNulls().create()
 
@@ -104,6 +119,7 @@ fun main(args: Array<String>) = runBlocking {
                         .map { Files.list(Paths.get(it.toString(), "wav")).toList() }
                         .toList()
                         .flatten()
+                        .filter { !it.toString().contains(".txt") }
                         .map {
                             it.toString()
                                     .replace(samplesDir + "/", "")
@@ -116,6 +132,8 @@ fun main(args: Array<String>) = runBlocking {
                              .map {  it.toString().replace(samplesDir + "/", "") }
                              .toArray { size -> Array(size, { "" }) }
                 }
+    println("Dataset size ${dataset.size}")
+    println("Dataset: ${Arrays.toString(dataset)}")
 
     val client = HttpClient(Apache) {
         install(JsonFeature) {
@@ -134,11 +152,24 @@ fun main(args: Array<String>) = runBlocking {
             client.post<String> {
                 url("http://$host/api/login/")
                 contentType(ContentType.Application.Json)
-                body = Credentials("root", "4dE^-c=LxTKW=zDQ")
+                body = Credentials("root", "root")
             }
         } catch (e: Exception) {
             println("Failed to login $e")
         }
+
+        val metrics = client.get<Array<Metric>> {
+            url("http://$host/api/asr/metrics/")
+            contentType(ContentType.Application.Json)
+        }
+        println("Got metrics $metrics")
+//        val metricsConfig = metrics.map {
+//            it.key
+//        }.toTypedArray()
+
+        val metricsConfig = arrayOf("SF", "WER", "INS", "DEL", "SUB", "CHER", "PHER", "CER",
+                "CXER", "INFLER", "INFLERA", "IMERA", "NCR", "OCWR",
+                "IWERA", "IWER", "HES", "RER", "WMER", "WLMER")
 
         val asrParams = client.get<ASRTestParams> {
             url("http://$host/api/asr/executors/$asrName/params/")
@@ -192,25 +223,39 @@ fun main(args: Array<String>) = runBlocking {
                         val response = client.post<ASRJobResp> {
                             url("http://$host/api/asr/jobs/")
                             contentType(ContentType.Application.Json)
-                            body = ASRJob(asrName, Array(1) {
-                                ASRJobStep(it, config = config, samples = dataset)
+                            body = ASRJob(asrName, Array(2) {
+                                when(it) {
+                                    0 -> ASRJobTestStep(it + 2, config = config, samples = dataset)
+                                            as ASRJobStep
+                                    1 -> ASRJobMeasureStep(it  + 2, config = MetricsStepConfig(metricsConfig),
+                                            samples = emptyArray())
+                                            as ASRJobStep
+                                    else -> null as ASRJobStep
+                                }
                             })
                         }
                         println("Created job $response")
                         val id = response.steps[0].id
+                        val metricsId = response.steps[1].id
 
                         var retries = 0
                         var completed = false
                         do {
                             delay(retryTimeoutMs)
                             try {
-                                val resStatus = client.get<ASRJobResult> {
+                                var resStatus = client.get<ASRJobResult> {
                                     url("http://$host/api/asr/jobs/result/$id/")
                                     contentType(ContentType.Application.Json)
                                 }
                                 println("Job results $resStatus")
+                                delay(5000)
+                                resStatus = client.get<ASRJobResult> {
+                                    url("http://$host/api/asr/jobs/result/$metricsId/")
+                                    contentType(ContentType.Application.Json)
+                                }
+                                println("Job results $resStatus")
                                 completed = true
-                                for (item in resStatus.result) {
+                                for (item in resStatus.result.overall[0].result) {
                                     try {
                                         aveValues.get(item.key)?.apply {
                                             add(item.value.toFloat())
